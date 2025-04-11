@@ -36,11 +36,15 @@
             border-radius: 4px;
             cursor: pointer;
         }
+        .search-container {
+            margin-bottom: 15px;
+        }
         .search-box {
-            flex: 2;
+            width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
+            box-sizing: border-box;
         }
         .music-grid {
             display: grid;
@@ -73,10 +77,13 @@
             color: #666;
             font-size: 0.9em;
         }
-        .music-code {
-            color: #888;
+        .badge {
+            background-color: #5cb85c;
+            color: white;
+            padding: 3px 6px;
+            border-radius: 3px;
             font-size: 0.8em;
-            margin: 5px 0;
+            margin-left: 5px;
         }
     </style>
 </head>
@@ -90,16 +97,22 @@
             <button class="btn-category" onclick="filterCategory('nacionais')">Nacionais</button>
             <button class="btn-category" onclick="filterCategory('internacionais')">Internacionais</button>
             <button class="btn-category" onclick="filterCategory('novidades')">Novidades</button>
+        </div>
+
+        <div class="search-container">
             <input type="text" class="search-box" placeholder="Pesquisar música ou cantor..." onkeyup="searchMusic(this.value)">
         </div>
 
-        <div class="music-grid" id="musicContainer"></div>
+        <div class="music-grid" id="musicContainer">
+            <!-- Cards de música serão inseridos aqui -->
+        </div>
     </div>
 
     <script>
         let allMusic = [];
         let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
 
+        // Carregar dados do Firebase
         async function loadMusicData() {
             try {
                 const response = await fetch('https://brk2-1ba1a.firebaseio.com/karaoke.json');
@@ -119,13 +132,14 @@
                         });
                     }
                 }
-                const sortedMusic = allMusic.sort((a, b) => a.artist.localeCompare(b.artist));
-                renderMusic(sortedMusic);
+                
+                renderMusic(allMusic);
             } catch (error) {
                 console.error('Erro ao carregar dados:', error);
             }
         }
 
+        // Renderizar músicas
         function renderMusic(musicList) {
             const container = document.getElementById('musicContainer');
             container.innerHTML = '';
@@ -139,9 +153,6 @@
                         <div class="music-title">${music.title}</div>
                         <div class="music-artist">${music.artist}</div>
                         <div class="music-code">Código: ${music.code}</div>
-                        <div style="margin-top: 10px;">
-                            <button onclick="addToQueue('${music.code}')">Adicionar à Fila</button>
-                        </div>
                     </div>
                     <div class="favorite-star" onclick="toggleFavorite('${music.id}')">
                         ${isFavorite ? '★' : '☆'}
@@ -151,12 +162,13 @@
             });
         }
 
+        // Filtros
         function filterCategory(category) {
             const filtered = allMusic.filter(music => music.category === category);
-            const sorted = filtered.sort((a, b) => a.artist.localeCompare(b.artist));
-            renderMusic(sorted);
+            renderMusic(filtered);
         }
 
+        // Pesquisa
         function searchMusic(query) {
             const searchText = query.toLowerCase();
             const results = allMusic.filter(music => 
@@ -164,10 +176,10 @@
                 music.artist.toLowerCase().includes(searchText) ||
                 music.code.includes(query)
             );
-            const sortedResults = results.sort((a, b) => a.artist.localeCompare(b.artist));
-            renderMusic(sortedResults);
+            renderMusic(results);
         }
 
+        // Favoritos
         function toggleFavorite(musicId) {
             const index = favorites.indexOf(musicId);
             if (index === -1) {
@@ -176,13 +188,10 @@
                 favorites.splice(index, 1);
             }
             localStorage.setItem('favorites', JSON.stringify(favorites));
-            renderMusic(allMusic.sort((a, b) => a.artist.localeCompare(b.artist)));
+            renderMusic(allMusic);
         }
 
-        function addToQueue(musicCode) {
-            alert(`Música ${musicCode} adicionada à fila!`);
-        }
-
+        // Inicialização
         loadMusicData();
     </script>
 </body>
