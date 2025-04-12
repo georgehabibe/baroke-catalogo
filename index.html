@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Catálogo de Músicas - Barokê</title>
     <style>
@@ -77,13 +78,20 @@
             color: #666;
             font-size: 0.9em;
         }
-        .badge {
-            background-color: #5cb85c;
-            color: white;
-            padding: 3px 6px;
-            border-radius: 3px;
-            font-size: 0.8em;
-            margin-left: 5px;
+        .no-results {
+            text-align: center;
+            padding: 20px;
+            grid-column: 1 / -1;
+            color: #666;
+            font-size: 1.2em;
+        }
+        .search-results-info {
+            grid-column: 1 / -1;
+            color: #666;
+            padding: 10px;
+            font-size: 1.1em;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 15px;
         }
     </style>
 </head>
@@ -97,10 +105,11 @@
             <button class="btn-category" onclick="filterCategory('nacionais')">Nacionais</button>
             <button class="btn-category" onclick="filterCategory('internacionais')">Internacionais</button>
             <button class="btn-category" onclick="filterCategory('novidades')">Novidades</button>
+            <button class="btn-category" onclick="filterCategory('favoritas')">Favoritas</button>
         </div>
 
         <div class="search-container">
-            <input type="text" class="search-box" placeholder="Pesquisar música ou cantor..." onkeyup="searchMusic(this.value)">
+            <input type="text" id="searchInput" class="search-box" placeholder="Pesquisar música ou cantor..." oninput="handleSearch()">
         </div>
 
         <div class="music-grid" id="musicContainer">
@@ -111,8 +120,17 @@
     <script>
         let allMusic = [];
         let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+        let currentFilter = 'all';
+        let currentSearch = '';
 
-        // Carregar dados do Firebase
+        // Função para normalizar texto removendo acentos
+        function normalizeText(text) {
+            return text
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase();
+        }
+
         async function loadMusicData() {
             try {
                 const response = await fetch('https://brk2-1ba1a.firebaseio.com/karaoke.json');
@@ -126,23 +144,78 @@
                             id: `${category}-${code}`,
                             code: code,
                             category: category,
-                            artist: music.CANTOR,
-                            title: music.MUSICA,
-                            lyrics: music.LETRA
+                            artist: (music.CANTOR || '').toString().trim(),
+                            title: (music.MUSICA || '').toString().trim(),
+                            lyrics: music.LETRA || ''
                         });
                     }
                 }
                 
-                renderMusic(allMusic);
+                renderFilteredMusic();
             } catch (error) {
                 console.error('Erro ao carregar dados:', error);
+                showError('Falha ao carregar dados do servidor');
             }
         }
 
-        // Renderizar músicas
+        function renderFilteredMusic() {
+            let filteredMusic = allMusic;
+            
+            // Aplicar filtro de categoria
+            if (currentFilter === 'favoritas') {
+                filteredMusic = filteredMusic.filter(music => favorites.includes(music.id));
+            } else if (currentFilter !== 'all') {
+                filteredMusic = filteredMusic.filter(music => 
+                    music.category.toLowerCase() === currentFilter.toLowerCase()
+                );
+            }
+            
+            // Aplicar filtro de pesquisa com normalização
+            if (currentSearch.trim()) {
+                const searchText = normalizeText(currentSearch.trim());
+                
+                filteredMusic = filteredMusic.filter(music => {
+                    const title = normalizeText(music.title);
+                    const artist = normalizeText(music.artist);
+                    const code = music.code.toString();
+
+                    return title.includes(searchText) || 
+                           artist.includes(searchText) || 
+                           code.includes(searchText);
+                });
+            }
+            
+            renderMusic(filteredMusic);
+        }
+
         function renderMusic(musicList) {
             const container = document.getElementById('musicContainer');
             container.innerHTML = '';
+            
+            // Exibir termo de pesquisa
+            if (currentSearch.trim()) {
+                const searchInfo = document.createElement('div');
+                searchInfo.className = 'search-results-info';
+                searchInfo.textContent = `Resultados para: "${currentSearch}"`;
+                container.appendChild(searchInfo);
+            }
+            
+            if (musicList.length === 0) {
+                let message;
+                if (currentSearch.trim()) {
+                    message = `Nenhum resultado encontrado para "${currentSearch}"`;
+                } else if (currentFilter === 'favoritas') {
+                    message = 'Nenhuma música favoritada';
+                } else {
+                    message = 'Nenhuma música encontrada';
+                }
+                
+                const noResults = document.createElement('div');
+                noResults.className = 'no-results';
+                noResults.textContent = message;
+                container.appendChild(noResults);
+                return;
+            }
             
             musicList.forEach(music => {
                 const isFavorite = favorites.includes(music.id);
@@ -162,24 +235,18 @@
             });
         }
 
-        // Filtros
         function filterCategory(category) {
-            const filtered = allMusic.filter(music => music.category === category);
-            renderMusic(filtered);
+            currentFilter = category;
+            currentSearch = '';
+            document.getElementById('searchInput').value = '';
+            renderFilteredMusic();
         }
 
-        // Pesquisa
-        function searchMusic(query) {
-            const searchText = query.toLowerCase();
-            const results = allMusic.filter(music => 
-                music.title.toLowerCase().includes(searchText) || 
-                music.artist.toLowerCase().includes(searchText) ||
-                music.code.includes(query)
-            );
-            renderMusic(results);
+        function handleSearch() {
+            currentSearch = document.getElementById('searchInput').value;
+            renderFilteredMusic();
         }
 
-        // Favoritos
         function toggleFavorite(musicId) {
             const index = favorites.indexOf(musicId);
             if (index === -1) {
@@ -188,11 +255,27 @@
                 favorites.splice(index, 1);
             }
             localStorage.setItem('favorites', JSON.stringify(favorites));
-            renderMusic(allMusic);
+            
+            // Atualizar visualização se estiver na aba de favoritos
+            if (currentFilter === 'favoritas') {
+                renderFilteredMusic();
+            } else {
+                // Atualizar apenas o card específico
+                const stars = document.querySelectorAll('.favorite-star');
+                stars.forEach(star => {
+                    if (star.getAttribute('onclick').includes(musicId)) {
+                        star.innerHTML = favorites.includes(musicId) ? '★' : '☆';
+                    }
+                });
+            }
         }
 
-        // Inicialização
-        loadMusicData();
+        function showError(message) {
+            const container = document.getElementById('musicContainer');
+            container.innerHTML = `<div class="no-results">${message}</div>`;
+        }
+
+        window.onload = loadMusicData;
     </script>
 </body>
 </html>
